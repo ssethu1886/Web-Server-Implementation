@@ -38,6 +38,10 @@ void handle_request(struct server_app *app, int client_socket);
 void serve_local_file(int client_socket, const char *path);
 void proxy_remote_file(struct server_app *app, int client_socket, const char *path);
 
+//my helper function
+char *getfilename(char* GETLine);
+
+
 // The main function is provided and no change is needed
 int main(int argc, char *argv[])
 {
@@ -82,7 +86,7 @@ int main(int argc, char *argv[])
             perror("accept failed");
             continue;
         }
-        
+
         printf("Accepted connection from %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
         handle_request(&app, client_socket);
         close(client_socket);
@@ -146,6 +150,26 @@ void handle_request(struct server_app *app, int client_socket) {
     // Hint: if the requested path is "/" (root), default to index.html
     char file_name[] = "index.html";
 
+    char response_message[BUFFER_SIZE];
+    ssize_t rs_size = 0;//content length ?
+    //Build the response message
+    char *status = "HTTP/1.1 200 OK\r\n";
+    char *connection = "Conncection: keep-alive";
+    char *server_name = "Server: A&S Server/1.0\r\n";
+    
+    //extract filename
+    char *req_token = strtok(request,"\r\n"); 
+    printf("\033[31m%s\n",req_token);
+    char *filename = getfilename(req_token);//filename function
+    printf("\t\033[0mFilename Extracted: %s\n",filename);
+    req_token=strtok(NULL,"\r\n"); 
+    
+    //parsing thru the rest
+    while(req_token != NULL){
+        printf("\033[31m%s\n",req_token);
+        req_token=strtok(NULL,"\r\n"); 
+    }
+
     // TODO: Implement proxy and call the function under condition
     // specified in the spec
     // if (need_proxy(...)) {
@@ -153,6 +177,7 @@ void handle_request(struct server_app *app, int client_socket) {
     // } else {
     serve_local_file(client_socket, file_name);
     //}
+    free(filename);
 }
 
 void serve_local_file(int client_socket, const char *path) {
@@ -188,4 +213,39 @@ void proxy_remote_file(struct server_app *app, int client_socket, const char *re
 
     char response[] = "HTTP/1.0 501 Not Implemented\r\n\r\n";
     send(client_socket, response, strlen(response), 0);
+}
+
+
+// Function to extract the filename from an input string and return it as a dynamically allocated string
+char *getfilename( char *inputString) {
+    const char *start = strstr(inputString, " /");
+    const char *end = strstr(inputString, " HTTP");
+
+    if (start != NULL && end != NULL && start < end) {
+        start += 2; // Move two characters ahead to begin after the space and slash
+
+        // Calculate the length of the filename
+        size_t filenameLength = end - start;
+
+        if (filenameLength > 0) {
+            // Allocate memory for the filename
+            char *filename = (char *)malloc(filenameLength + 1);
+            if (filename != NULL) {
+                // Copy the filename to the allocated memory
+                strncpy(filename, start, filenameLength);
+                filename[filenameLength] = '\0'; // Null-terminate the string
+                return filename;
+            }
+        }
+    }
+
+    // If the filename is not found or invalid, return "index.html"
+    char *filename = (char *)malloc(strlen("index.html") + 1);
+    if (filename != NULL) {
+        strcpy(filename, "index.html");
+        return filename;
+    }
+
+    // Return NULL only in case of memory allocation failure
+    return NULL;
 }
