@@ -9,6 +9,9 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
+#include <time.h>
+#define MB 10485760 // 1 MB = 10485760 bytes
+
 /**
  * Project 1 starter code
  * All parts needed to be changed/added are marked with TODO
@@ -29,17 +32,20 @@ struct server_app {
     uint16_t remote_port;
 };
 
-// The following function is implemented for you and doesn't need
-// to be change
+// The following function is implemented for you and doesn't need to be changed
 void parse_args(int argc, char *argv[], struct server_app *app);
 
 // The following functions need to be updated
 void handle_request(struct server_app *app, int client_socket);
-void serve_local_file(int client_socket, const char *path);
+void serve_local_file(int client_socket, const char *path,char *general_header);
 void proxy_remote_file(struct server_app *app, int client_socket, const char *path);
 
-//my helper function
+// Helper functions
 char *getfilename(char* GETLine);
+char *getContentType(char *filename);
+char *buildMessage(char *filename, char *contentType, char *content);
+char *getDate();
+void numOf10MBsections(const char* filename, size_t* sectionCount, size_t* remainingSize);
 
 
 // The main function is provided and no change is needed
@@ -146,41 +152,55 @@ void handle_request(struct server_app *app, int client_socket) {
     char *request = malloc(strlen(buffer) + 1);
     strcpy(request, buffer);
 
-    // TODO: Parse the header and extract essential fields, e.g. file name
-    // Hint: if the requested path is "/" (root), default to index.html
-    char file_name[] = "index.html";
+    // TODO: Parse the header and extract essential fields, e.g. file name 
+    // Hint: if the requested path is "/" (root), default to index.html 
 
-    char response_message[BUFFER_SIZE];
-    ssize_t rs_size = 0;//content length ?
-    //Build the response message
+
+    //Build the response 
+
+    //Status
     char *status = "HTTP/1.1 200 OK\r\n";
-    char *connection = "Conncection: keep-alive";
+    //Connection
+    char *connection = "Conncection: keep-alive\r\n";
+    //Server
     char *server_name = "Server: A&S Server/1.0\r\n";
     
-    //extract filename
-    char *req_token = strtok(request,"\r\n"); 
+    //Extract filename
+    char *req_token = strtok(request,"\r\n"); //first line
     printf("\033[31m%s\n",req_token);
     char *filename = getfilename(req_token);//filename function
     printf("\t\033[0mFilename Extracted: %s\n",filename);
-    req_token=strtok(NULL,"\r\n"); 
+    //req_token=strtok(NULL,"\r\n"); 
+
+    //Extract content type
+    char *content_type = getContentType(filename);
+
+    //Date
+    char *date_curr = getDate();
     
-    //parsing thru the rest
-    while(req_token != NULL){
-        printf("\033[31m%s\n",req_token);
-        req_token=strtok(NULL,"\r\n"); 
-    }
+    //Header
+    size_t header_length = strlen(status) + strlen(connection) + strlen(server_name) + strlen(content_type) + strlen(date_curr) + 1;
+    char *general_header = (char *)malloc(header_length);
+    strcpy(general_header, status);
+    strcat(general_header, connection);
+    strcat(general_header, server_name);
+    strcat(general_header,content_type);
+    strcat(general_header,date_curr);
+    printf("\033[36mHeader to send:\n%s\n",general_header);
+    printf("\033[0m");
 
     // TODO: Implement proxy and call the function under condition
     // specified in the spec
     // if (need_proxy(...)) {
     //    proxy_remote_file(app, client_socket, file_name);
     // } else {
-    serve_local_file(client_socket, file_name);
+    serve_local_file(client_socket, filename,general_header);
     //}
     free(filename);
+    free(date_curr);
 }
 
-void serve_local_file(int client_socket, const char *path) {
+void serve_local_file(int client_socket, const char *path, char *general_header) {
     // TODO: Properly implement serving of local files
     // The following code returns a dummy response for all requests
     // but it should give you a rough idea about what a proper response looks like
@@ -195,10 +215,29 @@ void serve_local_file(int client_socket, const char *path) {
     char response[] = "HTTP/1.0 200 OK\r\n"
                       "Content-Type: text/plain; charset=UTF-8\r\n"
                       "Content-Length: 15\r\n"
-                      "\r\n"
-                      "Sample response";
+                      "\r\n";
+
+    //char *response_msg = buildMessage();
+
+    const char* filename = path;
+    FILE* file = fopen(filename, "rb");
+    if (!file) {
+        perror("Failed to open file");
+        return;
+    }
+    size_t sectionCount;//num of 10MB section
+    size_t remainingSize;//remaining
+    numOf10MBsections(filename, &sectionCount, &remainingSize);
+
+    printf("Number of 10 MB sections: %zu\n", sectionCount);
+    printf("Size of remaining data: %zu bytes\n", remainingSize);
+
+    // for sections - 1 
+        // send msg
+    //send last section w remaining size
 
     send(client_socket, response, strlen(response), 0);
+    //free(sections);//from chunking function
 }
 
 void proxy_remote_file(struct server_app *app, int client_socket, const char *request) {
@@ -240,12 +279,85 @@ char *getfilename( char *inputString) {
     }
 
     // If the filename is not found or invalid, return "index.html"
+    // Prof. said we can assume the file path always starts with a '/' (piazza-71)
     char *filename = (char *)malloc(strlen("index.html") + 1);
     if (filename != NULL) {
         strcpy(filename, "index.html");
         return filename;
     }
 
-    // Return NULL only in case of memory allocation failure
+    // Err - mem allocation err (?)
     return NULL;
+}
+
+// Extract Filetype
+char *getContentType(char *filename) {
+    const char *ext = strrchr(filename, '.');// Find where extension starts
+    if (ext != NULL) {
+        ext++; // Move past the dot
+        if (strcmp(ext, "html") == 0) {
+            return "Content-Type: text/html\r\n";
+        } else if (strcmp(ext, "txt") == 0) {
+            return "Content-Type: text/plain; charset=UTF-8\r\n";
+        } else if (strcmp(ext, "jpg") == 0 || strcmp(ext, "jpeg") == 0) {
+            return "Content-Type: image/jpeg\r\n";
+        } else if (strcmp(ext, "png") == 0) {
+            return "Content-Type: image/png\r\n";
+        //add more img types ??
+        } else if (strcmp(ext, "pdf") == 0) {
+            return "Content-Type: application/pdf\r\n";
+        } else if (strcmp(ext, "json") == 0) {
+            return "Content-Type: application/json\r\n";
+        }
+    }
+
+    // Default for unknown - send binary data
+    return "application/octet-stream\r\n";
+}
+
+//Function to build the HTTP response message from previously extracted components
+char *buildMessage(char *filename, char *contentType, char *content){
+    //TO DO build msg with each section of return data
+}
+
+//Function to get the current date
+char *getDate() {
+    // Allocate memory for the formatted date and time string
+    char* formattedDateTime = (char*)malloc(27 * sizeof(char)); // 6 chars for "Date: " 20 characters for the date and time, plus one for the null terminator
+    if (formattedDateTime == NULL) {
+        perror("Memory allocation failed");
+        return NULL;
+    }
+
+    time_t rawTime;
+    struct tm* timeInfo;
+
+    time(&rawTime);
+    timeInfo = localtime(&rawTime);
+
+    // Format the date and time
+    strftime(formattedDateTime, 27, "Date: %Y-%m-%d %H:%M:%S", timeInfo);
+
+    return formattedDateTime;
+}
+
+void numOf10MBsections(const char* filename, size_t* sectionCount, size_t* remainingSize) {
+    FILE* file = fopen(filename, "rb");
+    if (!file) {
+        perror("Failed to open file: File doesnt exist");
+        return;
+    }
+
+    // Get the file size
+    fseek(file, 0, SEEK_END);
+    long long file_size = ftell(file);
+    rewind(file);
+
+    // Calculate the number of 10 MB sections
+    *sectionCount = file_size / MB;
+
+    // Calculate the size of the remaining data
+    *remainingSize = file_size % MB;
+
+    fclose(file);
 }
