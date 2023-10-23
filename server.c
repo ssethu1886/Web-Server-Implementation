@@ -46,6 +46,7 @@ char *getContentType(char *filename);
 char *buildMessage(char *filename, char *contentType, char *content);
 char *getDate();
 void numOf10MBsections(const char* filename, size_t* sectionCount, size_t* remainingSize);
+char *chunkHeader(size_t dataLength, char *general_header);
 
 
 // The main function is provided and no change is needed
@@ -177,7 +178,7 @@ void handle_request(struct server_app *app, int client_socket) {
 
     //Date
     char *date_curr = getDate();
-    
+
     //Header
     size_t header_length = strlen(status) + strlen(connection) + strlen(server_name) + strlen(content_type) + strlen(date_curr) + 1;
     char *general_header = (char *)malloc(header_length);
@@ -212,31 +213,37 @@ void serve_local_file(int client_socket, const char *path, char *general_header)
     // (When the requested file does not exist):
     // * Generate a correct response
 
-    char response[] = "HTTP/1.0 200 OK\r\n"
-                      "Content-Type: text/plain; charset=UTF-8\r\n"
-                      "Content-Length: 15\r\n"
-                      "\r\n";
-
-    //char *response_msg = buildMessage();
-
+    //TODO: Check if file exist
     const char* filename = path;
-    FILE* file = fopen(filename, "rb");
-    if (!file) {
-        perror("Failed to open file");
-        return;
-    }
-    size_t sectionCount;//num of 10MB section
-    size_t remainingSize;//remaining
-    numOf10MBsections(filename, &sectionCount, &remainingSize);
 
+    //Size of file
+    size_t sectionCount;//num of 10MB section
+    size_t remainingSize;//remaining bytes
+    numOf10MBsections(filename, &sectionCount, &remainingSize);//get num of 10MB sections plus extra
     printf("Number of 10 MB sections: %zu\n", sectionCount);
     printf("Size of remaining data: %zu bytes\n", remainingSize);
 
-    // for sections - 1 
-        // send msg
-    //send last section w remaining size
+    
+    //Send chunks (first the 1 MB sections)
+    for (size_t i = 0; i < sectionCount; i++) {
+        char* chunk_header = chunkHeader( MB, general_header);//build chunk header based off content length
+        char *response; // = readInData();//TODO
+        //Send the chunk
+        send(client_socket, chunk_header, strlen(chunk_header), 0);//change to add data later
+        printf("\033[36mSent chunk #%zu\n",i);
+        printf("\033[0m%s",chunk_header);
+        free(chunk_header);
+    }
+    //Send trailing bytes (non-multiple of a MB)
+    char* chunk_header = chunkHeader( remainingSize, general_header);//build chunk header based off content length
+    char *response; // = readInData();//TODO
+    send(client_socket, chunk_header, strlen(chunk_header), 0);//change to add data later
+    printf("\033[36mSent chunk #%zu\n",sectionCount+1);
+    printf("\033[0m%s",chunk_header);
+    free(chunk_header);
 
-    send(client_socket, response, strlen(response), 0);
+
+    //send(client_socket, response, strlen(response), 0);
     //free(sections);//from chunking function
 }
 
@@ -360,4 +367,19 @@ void numOf10MBsections(const char* filename, size_t* sectionCount, size_t* remai
     *remainingSize = file_size % MB;
 
     fclose(file);
+}
+
+char *chunkHeader(size_t dataLength, char *general_header){
+    int intSize = snprintf(NULL, 0, "%zu", dataLength);//size of the integer as a string (MB?)
+    size_t totalLength = strlen("Content-Length: ") + intSize + strlen(general_header) + strlen("\r\n\r\n");//total length needed for line
+
+    char* chunk_header = (char*)malloc(totalLength);
+    if (chunk_header) {
+        //"Content-Length: " and the integer
+        snprintf(chunk_header, totalLength, "Content-Length: %zu %s\r\n\r\n", dataLength, general_header);
+        return chunk_header;
+    } else {
+        printf("Chunk header memory allocation failed");
+        return NULL;
+    }
 }
