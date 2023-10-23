@@ -47,6 +47,7 @@ char *buildMessage(char *filename, char *contentType, char *content);
 char *getDate();
 void numOf1MBsections(const char* filename, size_t* sectionCount, size_t* remainingSize);
 char *chunkHeader(size_t dataLength, char *general_header);
+void readInData(char *response,size_t data_len, char *general_header);
 
 
 // The main function is provided and no change is needed
@@ -222,7 +223,7 @@ void serve_local_file(int client_socket, const char *path, char *general_header)
     numOf1MBsections(filename, &sectionCount, &remainingSize);//get num of 1 MB sections plus extra
     printf("Number of 1 MB sections: %zu\n", sectionCount);
     printf("Size of remaining data: %zu bytes\n", remainingSize);
-    
+
     //Send chunks (first the 1 MB sections)
     for (size_t i = 0; i < sectionCount; i++) {
         char* chunk_header = chunkHeader( MB, general_header);//build chunk header based off content length
@@ -366,16 +367,34 @@ void numOf1MBsections(const char* filename, size_t* sectionCount, size_t* remain
 }
 
 char *chunkHeader(size_t dataLength, char *general_header){
-    int intSize = snprintf(NULL, 0, "%zu", dataLength);//size of the integer as a string (MB?)
-    size_t totalLength = strlen("Content-Length: ") + intSize + strlen(general_header) + strlen("\r\n\r\n");//total length needed for line
+    int intSize = snprintf(NULL, 0, "%zu", dataLength);
+    char content_length[64]; // Buffer for "Content-Length" line
+    snprintf(content_length, sizeof(content_length), "Content-Length: %zu", dataLength);
 
-    char* chunk_header = (char*)malloc(totalLength);
+    // Calculate the total length, including the null terminator
+    size_t totalLength = strlen(general_header) + strlen(content_length) + 4; // 4 accounts for "\r\n\r\n"
+
+    char *chunk_header = (char *)malloc(totalLength);
     if (chunk_header) {
-        //"Content-Length: " and the integer
-        snprintf(chunk_header, totalLength, "Content-Length: %zu %s\r\n\r\n", dataLength, general_header);
+        strcpy(chunk_header, general_header);
+        strcat(chunk_header, "\r\n");
+        strcat(chunk_header, content_length);
+        strcat(chunk_header, "\r\n\r\n");//Data after
         return chunk_header;
     } else {
         printf("Chunk header memory allocation failed");
         return NULL;
     }
+}
+
+void readInData(char *response,size_t data_len, char *general_header){
+    //response is a ptr to where we will store the data
+    //need to malloc data for the full response
+    //data body is of length data_llen
+    //full response is of length size(header) + datalen
+
+    size_t totalLength = strlen(general_header) + data_len;//full len of header
+    response = (char *)malloc(totalLength);//allocate full html response space
+
+
 }
