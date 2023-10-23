@@ -10,7 +10,7 @@
 #include <sys/socket.h>
 
 #include <time.h>
-#define MB 10485760 // 1 MB = 10485760 bytes
+#define MB 1048576 // 1 MB 
 
 /**
  * Project 1 starter code
@@ -45,7 +45,7 @@ char *getfilename(char* GETLine);
 char *getContentType(char *filename);
 char *buildMessage(char *filename, char *contentType, char *content);
 char *getDate();
-void numOf10MBsections(const char* filename, size_t* sectionCount, size_t* remainingSize);
+void numOf1MBsections(const char* filename, size_t* sectionCount, size_t* remainingSize);
 char *chunkHeader(size_t dataLength, char *general_header);
 
 
@@ -217,12 +217,11 @@ void serve_local_file(int client_socket, const char *path, char *general_header)
     const char* filename = path;
 
     //Size of file
-    size_t sectionCount;//num of 10MB section
+    size_t sectionCount;//num of 1 MB section
     size_t remainingSize;//remaining bytes
-    numOf10MBsections(filename, &sectionCount, &remainingSize);//get num of 10MB sections plus extra
-    printf("Number of 10 MB sections: %zu\n", sectionCount);
+    numOf1MBsections(filename, &sectionCount, &remainingSize);//get num of 1 MB sections plus extra
+    printf("Number of 1 MB sections: %zu\n", sectionCount);
     printf("Size of remaining data: %zu bytes\n", remainingSize);
-
     
     //Send chunks (first the 1 MB sections)
     for (size_t i = 0; i < sectionCount; i++) {
@@ -239,12 +238,9 @@ void serve_local_file(int client_socket, const char *path, char *general_header)
     char *response; // = readInData();//TODO
     send(client_socket, chunk_header, strlen(chunk_header), 0);//change to add data later
     printf("\033[36mSent chunk #%zu\n",sectionCount+1);
-    printf("\033[0m%s",chunk_header);
+    printf("\033[31m%s",chunk_header);//\033[0m
     free(chunk_header);
-
-
-    //send(client_socket, response, strlen(response), 0);
-    //free(sections);//from chunking function
+    printf("\033[0mResponses Sent!\n");
 }
 
 void proxy_remote_file(struct server_app *app, int client_socket, const char *request) {
@@ -348,7 +344,7 @@ char *getDate() {
     return formattedDateTime;
 }
 
-void numOf10MBsections(const char* filename, size_t* sectionCount, size_t* remainingSize) {
+void numOf1MBsections(const char* filename, size_t* sectionCount, size_t* remainingSize) {
     FILE* file = fopen(filename, "rb");
     if (!file) {
         perror("Failed to open file: File doesnt exist");
@@ -360,7 +356,7 @@ void numOf10MBsections(const char* filename, size_t* sectionCount, size_t* remai
     long long file_size = ftell(file);
     rewind(file);
 
-    // Calculate the number of 10 MB sections
+    // Calculate the number of 1 MB sections
     *sectionCount = file_size / MB;
 
     // Calculate the size of the remaining data
