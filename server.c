@@ -374,17 +374,32 @@ char *chunkHeader(size_t dataLength, char *general_header){
     // Calculate the total length, including the null terminator
     size_t totalLength = strlen(general_header) + strlen(content_length) + 4; // 4 accounts for "\r\n\r\n"
 
-    char *chunk_header = (char *)malloc(totalLength + strlen("Put Data Here"));
+    char *chunk_header = (char *)malloc(totalLength + dataLength);
     //Open file and read into a buffer
     char *test_buffer = (char *)malloc(dataLength);
-    
-    
+     // error checking
+    if (!test_buffer) {
+        perror("Failed to allocate test_buffer");
+        exit(1);
+    }
+
+    FILE *file = fopen("index.html", "r");
+    if(!file){
+        perror("Failed to open file");
+        free(test_buffer);
+        exit(1);
+    }
+
+    // read into buffer 
+    fread(test_buffer, 1, dataLength, file);
+    fclose(file);
+
     if (chunk_header) {
         strcpy(chunk_header, general_header);
         strcat(chunk_header, "\r\n");
         strcat(chunk_header, content_length);
         strcat(chunk_header, "\r\n\r\n");//Data after
-        strcat(chunk_header,"Put Data Here");
+        strcat(chunk_header, test_buffer);
         printf("\nBuilt CH: %s\n",chunk_header);
         
         free(test_buffer);
