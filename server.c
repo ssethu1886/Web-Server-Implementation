@@ -45,7 +45,7 @@ char *getfilename(char* GETLine);
 char *getContentType(char *filename);
 char *getDate();
 void numOf1MBsections(const char* filename, size_t* sectionCount, size_t* remainingSize);
-char *chunkHeader(size_t dataLength, char *general_header);
+char *chunkHeader(const char *fn, size_t dataLength, char *general_header);
 char *readInData(size_t data_len, char *chunk_header);
 
 
@@ -219,7 +219,7 @@ void serve_local_file(int client_socket, const char *path, char *general_header)
 
     //Send chunks (first the 1 MB sections)
     for (size_t i = 0; i < sectionCount; i++) {
-        char *chunk_header = chunkHeader( MB, general_header);//build chunk header based off content length
+        char *chunk_header = chunkHeader( filename, MB, general_header);//build chunk header based off content length
         
         //char *response;//full response msg
         //readInData(response,MB,chunk_header);//TODO
@@ -234,7 +234,7 @@ void serve_local_file(int client_socket, const char *path, char *general_header)
         //free(response);
     }
     //Send trailing bytes (non-multiple of a MB)
-    char *chunk_header = chunkHeader( remainingSize, general_header);//build chunk header based off content length
+    char *chunk_header = chunkHeader( filename,remainingSize, general_header);//build chunk header based off content length
     printf("\033[31mChunk Header:\n%s",chunk_header);
     
     //char *response;
@@ -366,7 +366,8 @@ void numOf1MBsections(const char* filename, size_t* sectionCount, size_t* remain
     fclose(file);
 }
 
-char *chunkHeader(size_t dataLength, char *general_header){
+/*
+char *chunkHeader(const char *fn,size_t dataLength, char *general_header){
     int intSize = snprintf(NULL, 0, "%zu", dataLength);
     char content_length[64]; // Buffer for "Content-Length" line
     snprintf(content_length, sizeof(content_length), "Content-Length: %zu", dataLength);
@@ -381,17 +382,20 @@ char *chunkHeader(size_t dataLength, char *general_header){
     if (!test_buffer) {
         perror("Failed to allocate test_buffer");
         exit(1);
-    }
+    }//error checking
 
-    FILE *file = fopen("index.html", "r");
+    FILE *file = fopen(fn, "r");
     if(!file){
         perror("Failed to open file");
         free(test_buffer);
         exit(1);
-    }
+    }//error checking
 
     // read into buffer 
-    fread(test_buffer, 1, dataLength, file);
+    printf("Read %zu bytes\n",dataLength);
+    size_t i = fread(test_buffer, 1, dataLength, file);
+    printf("read %zu bytes\n",i);
+    printf("%s",test_buffer);
     fclose(file);
 
     if (chunk_header) {
@@ -409,27 +413,81 @@ char *chunkHeader(size_t dataLength, char *general_header){
         return NULL;
     }
 }
+*/
 
-char* readInData(size_t data_len,char *chunk_header){
-    printf("\ntest\n");
-    size_t chunk_len = strlen(chunk_header);
-    size_t test_len = strlen("PLEASEWORK");
-    char *response=(char*) malloc(chunk_len + test_len + 1);
-    //(char *) malloc(chunk_len + test_len + 1);
-    printf("test3");
-    return NULL;
-    if(response){
-        strcpy(response, chunk_header);
-        strcat(response, "PLEASEWORK");
-        printf("\nRead In:\n%s",response);
-        //TODO here we'll add the actual file data
-        return response;
+char *chunkHeader(const char *fn, size_t dataLength, char *general_header) {
+    int intSize = snprintf(NULL, 0, "%zu", dataLength);
+    char content_length[64]; // Buffer for "Content-Length" line
+    snprintf(content_length, sizeof(content_length), "Content-Length: %zu", dataLength);
+
+    // Calculate the total length, including the null terminator
+    size_t general_header_length = strlen(general_header);
+    size_t content_length_length = strlen(content_length);
+    size_t totalLength = general_header_length + content_length_length + 4; // 4 accounts for "\r\n\r\n"
+
+    char *chunk_header = (char *)malloc(totalLength + dataLength);
+    
+    // Error checking
+    if (!chunk_header) {
+        perror("Failed to allocate chunk_header");
+        exit(1);
     }
-    else{
-        printf("Memory Allocation Error!");
+
+    //Open file and read into a buffer
+    char *test_buffer = (char *)malloc(dataLength);
+
+    // Error checking
+    if (!test_buffer) {
+        perror("Failed to allocate test_buffer");
+        free(chunk_header);
+        exit(1);
+    }
+
+    FILE *file = fopen(fn, "r");
+    if (!file) {
+        perror("Failed to open file");
+        free(chunk_header);
+        free(test_buffer);
+        exit(1);
+    }
+
+    // read into buffer
+    printf("Read %zu bytes\n", dataLength);
+    size_t i = fread(test_buffer, 1, dataLength, file);
+    printf("Read %zu bytes\n", i);
+    fclose(file);
+
+    if (chunk_header) {
+        // Copy general_header to chunk_header
+        memcpy(chunk_header, general_header, general_header_length);
+        char *current_ptr = chunk_header + general_header_length;
+
+        // Concatenate "\r\n" to chunk_header
+        memcpy(current_ptr, "\r\n", 2);
+        current_ptr += 2;
+
+        // Copy content_length to chunk_header
+        memcpy(current_ptr, content_length, content_length_length);
+        current_ptr += content_length_length;
+
+        // Concatenate "\r\n\r\n" to chunk_header
+        memcpy(current_ptr, "\r\n\r\n", 4);
+        current_ptr += 4;
+
+        // Copy test_buffer to chunk_header
+        memcpy(current_ptr, test_buffer, dataLength);
+        
+        //printf("\nBuilt CH: %s\n",chunk_header);
+
+        free(test_buffer);
+        return chunk_header;
+    } else {
+        printf("Chunk header memory allocation failed");
         return NULL;
     }
 }
+
+
 
 //TODO add function to check whether a file exists.
 //return page that says file doesnt exist ? (set filename to it)
