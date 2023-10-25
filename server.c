@@ -45,7 +45,7 @@ char *getfilename(char* GETLine);
 char *getContentType(char *filename);
 char *getDate();
 void numOf1MBsections(const char* filename, size_t* sectionCount, size_t* remainingSize);
-char *chunkHeader(const char *fn, size_t dataLength, char *general_header);
+char *chunkHeader(const char *fn, size_t dataLength, char *general_header, size_t * send_len);
 char *readInData(size_t data_len, char *chunk_header);
 
 
@@ -182,13 +182,20 @@ void handle_request(struct server_app *app, int client_socket) {
     printf("\033[36mGeneral Header:\n%s\n",general_header);
     printf("\033[0m");
 
-    // TODO: Implement proxy and call the function under condition
-    // specified in the spec
-    // if (need_proxy(...)) {
-    //    proxy_remote_file(app, client_socket, file_name);
-    // } else {
-    serve_local_file(client_socket, filename,general_header);
-    //}
+    bool needProxy = true;
+    //check if file exists, else ask proxy
+    FILE *fp = fopen(filename,"r");
+    if(fp != NULL){
+        needProxy = false;
+        fclose(fp);
+    }//if file exists we dont need proxy
+    
+    // TODO: Implement proxy and call the function under condition specified in the spec
+    if (needProxy) {
+        proxy_remote_file(app, client_socket, request);//request -> filename ?
+    } else {
+        serve_local_file(client_socket, filename,general_header);
+    }
     free(filename);
     free(date_curr);
     free(general_header);
@@ -214,38 +221,28 @@ void serve_local_file(int client_socket, const char *path, char *general_header)
     size_t sectionCount;//num of 1 MB sections
     size_t remainingSize;//remaining bytes
     numOf1MBsections(filename, &sectionCount, &remainingSize);//get num of 1 MB sections plus extra
-    printf("Number of 1 MB sections: %zu\n", sectionCount);
-    printf("Size of remaining data: %zu bytes\n", remainingSize);
+    //printf("Number of 1 MB sections: %zu\n", sectionCount);
+    //printf("Size of remaining data: %zu bytes\n", remainingSize);
+
+    size_t send_len[1] = {-1};//test
 
     //Send chunks (first the 1 MB sections)
     for (size_t i = 0; i < sectionCount; i++) {
-        char *chunk_header = chunkHeader( filename, MB, general_header);//build chunk header based off content length
-        
-        //char *response;//full response msg
-        //readInData(response,MB,chunk_header);//TODO
-        
-        //Send the chunk
-        send(client_socket, chunk_header, strlen(chunk_header), 0);//change to add data later
-        //send(client_socket, response, strlen(response), 0);//change to add data later
+        char *chunk_header = chunkHeader( filename, MB, general_header, send_len);//build chunk header based off content length
+        send(client_socket, chunk_header, send_len[0], 0);//change to add data later
+
         printf("\033[36mSent chunk #%zu\n",i);
         printf("\033[0m%s",chunk_header);
 
         free(chunk_header);
-        //free(response);
     }
     //Send trailing bytes (non-multiple of a MB)
-    char *chunk_header = chunkHeader( filename,remainingSize, general_header);//build chunk header based off content length
+    char *chunk_header = chunkHeader( filename,remainingSize, general_header, send_len);//build chunk header based off content length
+    send(client_socket, chunk_header, send_len[0], 0);//change to add data later
+    
     printf("\033[31mChunk Header:\n%s",chunk_header);
-    
-    //char *response;
-    //printf("plz2");
-    //response = readInData(remainingSize,chunk_header);
-    
-    send(client_socket, chunk_header, strlen(chunk_header), 0);//change to add data later
-    //send(client_socket, response, strlen(response), 0);//change to add data later
     printf("\033[36mSent chunk #%zu\n",sectionCount+1);
     
-    //free(response);    
     free(chunk_header);
     printf("\033[0mResponses Sent!\n");
 }
@@ -259,6 +256,15 @@ void proxy_remote_file(struct server_app *app, int client_socket, const char *re
     // Bonus:
     // * When connection to the remote server fail, properly generate
     // HTTP 502 "Bad Gateway" response
+    
+
+
+    //connect(int socket, const struct sockaddr *address, socklen_t address_len);
+    //connect to proxy
+    //forward request to proxy
+    //forward response to client
+
+
 
     char response[] = "HTTP/1.0 501 Not Implemented\r\n\r\n";
     send(client_socket, response, strlen(response), 0);
@@ -266,12 +272,12 @@ void proxy_remote_file(struct server_app *app, int client_socket, const char *re
 
 // Function to extract the filename from an input string and return it as a dynamically allocated string
 char *getfilename( char *inputString) {
+    printf("Given: %s , ", inputString);
     const char *start = strstr(inputString, " /");
-    const char *end = strstr(inputString, " HTTP");
+    const char *end = strstr(inputString, " HTTP");\
 
     if (start != NULL && end != NULL && start < end) {
         start += 2; // Move two characters ahead to begin after the space and slash
-
         // Calculate the length of the filename
         size_t filenameLength = end - start;
 
@@ -282,9 +288,11 @@ char *getfilename( char *inputString) {
                 // Copy the filename to the allocated memory
                 strncpy(filename, start, filenameLength);
                 filename[filenameLength] = '\0'; // Null-terminate the string
+                printf("Test fn: %s",filename);
                 return filename;
             }
         }
+        //TODO add % and spaces in requested filename
     }
 
     // If the filename is not found or invalid, return "index.html"
@@ -415,7 +423,7 @@ char *chunkHeader(const char *fn,size_t dataLength, char *general_header){
 }
 */
 
-char *chunkHeader(const char *fn, size_t dataLength, char *general_header) {
+char *chunkHeader(const char *fn, size_t dataLength, char *general_header, size_t * send_len) {
     int intSize = snprintf(NULL, 0, "%zu", dataLength);
     char content_length[64]; // Buffer for "Content-Length" line
     snprintf(content_length, sizeof(content_length), "Content-Length: %zu", dataLength);
@@ -423,9 +431,9 @@ char *chunkHeader(const char *fn, size_t dataLength, char *general_header) {
     // Calculate the total length, including the null terminator
     size_t general_header_length = strlen(general_header);
     size_t content_length_length = strlen(content_length);
-    size_t totalLength = general_header_length + content_length_length + 4; // 4 accounts for "\r\n\r\n"
-
-    char *chunk_header = (char *)malloc(totalLength + dataLength);
+    size_t totalLength = general_header_length + content_length_length + 6; // 4 accounts for "\r\n\r\n" 2 for "\r\n" before the  line
+    send_len[0] = totalLength + dataLength;
+    char *chunk_header = (char *)malloc(totalLength + dataLength );
     
     // Error checking
     if (!chunk_header) {
