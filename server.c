@@ -47,7 +47,7 @@ char *getDate();
 void numOf1MBsections(const char* filename, size_t* sectionCount, size_t* remainingSize);
 char *chunkHeader(const char *fn, size_t dataLength, char *general_header, size_t * send_len);
 char *readInData(size_t data_len, char *chunk_header);
-
+bool need_proxy(char *filename);
 
 // The main function is provided and no change is needed
 int main(int argc, char *argv[])
@@ -182,15 +182,7 @@ void handle_request(struct server_app *app, int client_socket) {
     printf("\033[36mGeneral Header:\n%s\n",general_header);
     printf("\033[0m");
 
-    bool needProxy = true;
-    //check if file exists, else ask proxy
-    FILE *fp = fopen(filename,"r");
-    if(fp != NULL){
-        needProxy = false;
-        fclose(fp);
-    }//if file exists we dont need proxy
-    
-    // TODO: Implement proxy and call the function under condition specified in the spec
+    bool needProxy = need_proxy(filename);// it file extention is ".ts"
     if (needProxy) {
         proxy_remote_file(app, client_socket, request);//request -> filename ?
     } else {
@@ -214,17 +206,13 @@ void serve_local_file(int client_socket, const char *path, char *general_header)
     // (When the requested file does not exist):
     // * Generate a correct response
 
-    //TODO: Check if file exist
     const char* filename = path;
 
     //Size of file
     size_t sectionCount;//num of 1 MB sections
     size_t remainingSize;//remaining bytes
     numOf1MBsections(filename, &sectionCount, &remainingSize);//get num of 1 MB sections plus extra
-    //printf("Number of 1 MB sections: %zu\n", sectionCount);
-    //printf("Size of remaining data: %zu bytes\n", remainingSize);
-
-    size_t send_len[1] = {-1};//test
+    size_t send_len[1] = {-1};
 
     //Send chunks (first the 1 MB sections)
     for (size_t i = 0; i < sectionCount; i++) {
@@ -249,32 +237,76 @@ void serve_local_file(int client_socket, const char *path, char *general_header)
 
 void proxy_remote_file(struct server_app *app, int client_socket, const char *request) {
     // TODO: Implement proxy request and replace the following code
-    // What's needed:
-    // * Connect to remote server (app->remote_server/app->remote_port)
-    // * Forward the original request to the remote server
-    // * Pass the response from remote server back
-    // Bonus:
-    // * When connection to the remote server fail, properly generate
-    // HTTP 502 "Bad Gateway" response
+    printf("To forward: %s\n",request);
+
+    int sock = 0;
+    struct sockaddr_in serv_addr;
+    char buffer[1024] = {0};
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        printf("\n Socket creation error \n");
+        return;
+    }
+
+    serv_addr.sin_family = AF_INET;//addr fam to ipv4
+    serv_addr.sin_port = htons(app->remote_port);//port num
+    printf("\tPort: %d\n",app->remote_port);
+    printf("\tHost: %s\n",app->remote_host);
+
+    // Convert IPv4 and IPv6 addresses from text to binary form
+    if (inet_pton(AF_INET, app->remote_host, &serv_addr.sin_addr) <= 0) {
+        printf("\nInvalid address/ Address not supported \n");
+        return;
+    }
     
+    //where im failing
+    if (connect(client_socket, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
+        printf("\nConnection Failed \n");
+        return;
+    }
+    printf("\tProxy connection success\n");
 
+    //forward the request
+    send(client_socket,request,strlen(request),0);
+    printf("Forwarded \'%s\' to proxy\n\n",request);
+    
+    //read the response
+    int valread = 0;
 
-    //connect(int socket, const struct sockaddr *address, socklen_t address_len);
-    //connect to proxy
-    //forward request to proxy
-    //forward response to client
+    while(1){
+        printf("while loop");
+        int bytes_read = read(sock,buffer+valread,sizeof(buffer)-valread);
+        if (bytes_read <= 0) {
+            if (bytes_read < 0) {
+                perror("Read error");
+            }
+            break; // Exit the loop if no more data to read
+        }
+    
+        valread += bytes_read;
 
+        //send full buffer
+        if (valread >= sizeof(buffer)) {
+            // Send the data
+            send(sock, buffer, valread, 0);
+            printf("Sent %d bytes to the client\n", valread);
 
+            // Reset the buffer and valread
+            memset(buffer, 0, sizeof(buffer));
+            valread = 0;
+        }
+    }
 
-    char response[] = "HTTP/1.0 501 Not Implemented\r\n\r\n";
-    send(client_socket, response, strlen(response), 0);
+    //forward to client
+    send(client_socket, buffer, 1024, 0);
+
+    //send(client_socket, response, strlen(response), 0);
 }
 
 // Function to extract the filename from an input string and return it as a dynamically allocated string
 char *getfilename( char *inputString) {
     printf("Given: %s , ", inputString);
     const char *start = strstr(inputString, " /");
-    const char *end = strstr(inputString, " HTTP");\
+    const char *end = strstr(inputString, " HTTP");
 
     if (start != NULL && end != NULL && start < end) {
         start += 2; // Move two characters ahead to begin after the space and slash
@@ -374,55 +406,6 @@ void numOf1MBsections(const char* filename, size_t* sectionCount, size_t* remain
     fclose(file);
 }
 
-/*
-char *chunkHeader(const char *fn,size_t dataLength, char *general_header){
-    int intSize = snprintf(NULL, 0, "%zu", dataLength);
-    char content_length[64]; // Buffer for "Content-Length" line
-    snprintf(content_length, sizeof(content_length), "Content-Length: %zu", dataLength);
-
-    // Calculate the total length, including the null terminator
-    size_t totalLength = strlen(general_header) + strlen(content_length) + 4; // 4 accounts for "\r\n\r\n"
-
-    char *chunk_header = (char *)malloc(totalLength + dataLength);
-    //Open file and read into a buffer
-    char *test_buffer = (char *)malloc(dataLength);
-     // error checking
-    if (!test_buffer) {
-        perror("Failed to allocate test_buffer");
-        exit(1);
-    }//error checking
-
-    FILE *file = fopen(fn, "r");
-    if(!file){
-        perror("Failed to open file");
-        free(test_buffer);
-        exit(1);
-    }//error checking
-
-    // read into buffer 
-    printf("Read %zu bytes\n",dataLength);
-    size_t i = fread(test_buffer, 1, dataLength, file);
-    printf("read %zu bytes\n",i);
-    printf("%s",test_buffer);
-    fclose(file);
-
-    if (chunk_header) {
-        strcpy(chunk_header, general_header);
-        strcat(chunk_header, "\r\n");
-        strcat(chunk_header, content_length);
-        strcat(chunk_header, "\r\n\r\n");//Data after
-        strcat(chunk_header, test_buffer);
-        printf("\nBuilt CH: %s\n",chunk_header);
-        
-        free(test_buffer);
-        return chunk_header;
-    } else {
-        printf("Chunk header memory allocation failed");
-        return NULL;
-    }
-}
-*/
-
 char *chunkHeader(const char *fn, size_t dataLength, char *general_header, size_t * send_len) {
     int intSize = snprintf(NULL, 0, "%zu", dataLength);
     char content_length[64]; // Buffer for "Content-Length" line
@@ -495,9 +478,25 @@ char *chunkHeader(const char *fn, size_t dataLength, char *general_header, size_
     }
 }
 
+bool need_proxy(char *filename){
+    size_t l = strlen(filename); 
+    if(l > 3){
+        if ( filename[l-3] == '.' && filename[l-2] == 't' && filename[l-1] == 's' ){
+            //printf("\nTS FILE\n");
+            return true;
+        }
+        else{
+            return false;
+        }
+    }
+    else{
+        return false;
+    }
+}
 
 
-//TODO add function to check whether a file exists.
-//return page that says file doesnt exist ? (set filename to it)
+//TO DO
 
-//TODO fix error when file doesnt exist it just keeps going w weird behavior
+// % and %20 in the filename -swetha
+
+// proxy server -abril
