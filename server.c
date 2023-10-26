@@ -310,19 +310,52 @@ char *getfilename( char *inputString) {
 
     if (start != NULL && end != NULL && start < end) {
         start += 2; // Move two characters ahead to begin after the space and slash
+        
         // Calculate the length of the filename
         size_t filenameLength = end - start;
 
         if (filenameLength > 0) {
-            // Allocate memory for the filename
-            char *filename = (char *)malloc(filenameLength + 1);
-            if (filename != NULL) {
-                // Copy the filename to the allocated memory
-                strncpy(filename, start, filenameLength);
-                filename[filenameLength] = '\0'; // Null-terminate the string
-                printf("Test fn: %s",filename);
-                return filename;
+            // Count occurences of '%20' and '%25' in the filename
+            size_t replacementCount = 0;
+            const char *temp = start;
+            while ((temp = strstr(temp, "%20")) != NULL && temp < end){
+                replacementCount++;
+                temp += 3; // move past the current '%20'
             }
+            temp = start;
+            while ((temp = strstr(temp, "%25")) != NULL && temp < end){
+                replacementCount++;
+                temp += 3; // move past the current '%25'
+            }
+
+            // Allocate memory for the filename
+            char *filename = (char *)malloc(filenameLength - replacementCount * 2 + 1);
+            if (!filename) {
+                printf("Memory allocation failed.\n");
+                return NULL;
+            }
+
+            // Copy the filename to the allocated memory
+            char *dest = filename;
+
+                for (size_t i = 0; i < filenameLength;) {
+                if (i <= filenameLength - 3 && start[i] == '%' && start[i+1] == '2') {
+                    if (start[i+2] == '0') {
+                        *dest++ = ' ';
+                        i += 3; // Move past the "%20"
+                    } else if (start[i+2] == '5') {
+                        *dest++ = '%';
+                        i += 3; // Move past the "%25"
+                    } else {
+                        *dest++ = start[i++];
+                    }
+                } else {
+                    *dest++ = start[i++];
+                }
+            }
+            *dest = '\0'; // null terminate string
+            printf("Test fn: %s",filename);
+            return filename;
         }
         //TODO add % and spaces in requested filename
     }
