@@ -305,22 +305,23 @@ char *getfilename( char *inputString) {
 
             // Copy the filename to the allocated memory
             char *dest = filename;
-                for (size_t i = 0; i < filenameLength; ){
-                    if (i <= filenameLength - 3 && 
-                    start[i] == '%' &&
-                    start[i+1] == '2') {
-                        if (start[i+2] == '0')
+
+                for (size_t i = 0; i < filenameLength;) {
+                if (i <= filenameLength - 3 && start[i] == '%' && start[i+1] == '2') {
+                    if (start[i+2] == '0') {
                         *dest++ = ' ';
                         i += 3; // Move past the "%20"
-                     } else if (start[i+2] == '5'){
+                    } else if (start[i+2] == '5') {
                         *dest++ = '%';
-                         i += 3; // Move past the "%25"
-                   } else {
+                        i += 3; // Move past the "%25"
+                    } else {
+                        *dest++ = start[i++];
+                    }
+                } else {
                     *dest++ = start[i++];
-                   }
-                   }
-             *dest = '\0'; // null terminate string 
-                
+                }
+            }
+            *dest = '\0'; // null terminate string
             printf("Test fn: %s",filename);
             return filename;
         }
