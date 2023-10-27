@@ -224,87 +224,61 @@ void serve_local_file(int client_socket, const char *path, char *general_header)
 }
 
 void proxy_remote_file(struct server_app *app, int client_socket, const char *request) {
-    // TODO: Implement proxy request and replace the following code
     printf("To forward: %s\n",request);
 
-    int prox_sock = 0;
-    struct sockaddr_in serv_addr;
-    char buffer[1024] = {0};
-    if ((prox_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+    //TODO append \r\n\r\n to request msg
+    char * fix_request = (char *) malloc(strlen(request)+4);
+    if (fix_request){
+       strcpy(fix_request, request); 
+       strcat(fix_request, "\r\n\r\n");
+    }
+    char * test_req = "GET /output0.ts HTTP/1.1\r\n\r\n";
+
+    int proxy_fd;
+    struct sockaddr_in proxy_addr;
+    if ((proxy_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {//create TCP socket
         printf("\n Socket creation error \n");
         return;
     }
 
-    serv_addr.sin_family = AF_INET;//addr fam to ipv4
-    serv_addr.sin_port = htons(app->remote_port);//port num
-    printf("\tPort: %d\n",app->remote_port);
-    printf("\tHost: %s\n",app->remote_host);
+    proxy_addr.sin_family = AF_INET;//addr fam to ipv4
+    proxy_addr.sin_addr.s_addr = INADDR_ANY;// idk
+    proxy_addr.sin_port = htons(app->remote_port);//port num
 
     // Convert IPv4 and IPv6 addresses from text to binary form
-    if (inet_pton(AF_INET, app->remote_host, &serv_addr.sin_addr) <= 0) {
+    if (inet_pton(AF_INET, app->remote_host, &proxy_addr.sin_addr) <= 0) {
         printf("\nInvalid address/ Address not supported \n");
         return;
     }
+    printf("\tPort: %d\n",app->remote_port);
+    printf("\tHost: %s\n",app->remote_host);
     
-    printf("WT forward \'%s\' to proxy\n",request);
-
     // Connect to proxy server 
-    if (connect( prox_sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
+    if (connect( proxy_fd, (struct sockaddr *) &proxy_addr, sizeof(proxy_addr)) < 0) {
         printf("\nConnection Failed \n");
         return;
     }
-    printf("\tProxy connection success\n");
+    printf("Connection success\n");
 
-    //forward the request
-    int sent = send( prox_sock,request,strlen(request),0);
-    printf("\t%d bytes\n",sent);
-    printf("Forwarded \'%s\' to proxy\n",request);
-    
-    int valread = 0;
-    int buffer_size = sizeof(buffer);
-    
-    int bytes_read = read(prox_sock, buffer, buffer_size);
-    printf("read()\n");
+    if( ( send( proxy_fd, fix_request, strlen(test_req), 0 ) ) < 0){
+        printf("Send Failed \n");
+        exit(EXIT_FAILURE);
+    }
+    printf("Sent Request (bytes: %zu)\n",strlen(request));
 
-    send(client_socket, buffer, bytes_read, 0);
-    printf("send()\n");
-    
-    /*
-    while(true){
-        printf("?");
-        int bytes_read = recv(prox_sock, buffer + valread, buffer_size - valread,0);
-        if (bytes_read < 0) {
-            if (bytes_read < 0) {
-                perror("Read error");
-            }
-            else if (bytes_read == 0) {
-                break;
-            }
-        }
-    
-        valread += bytes_read;
+    char buffer[BUFFER_SIZE];//set size buffer
+    size_t bytes_read;
 
-        //send full buffer
-        if (valread >= sizeof(buffer) || bytes_read == 0) {
-            int bytes_sent = send(client_socket, buffer, valread, 0);
-            if(bytes_sent<0){
-                perror("Send to client error");
-                break;
-            }
-            // Send the data
-            printf("Sent %d bytes to the client\n", valread);
+    while( recv(proxy_fd, buffer, sizeof(buffer) /*- 1*/ , 0) > 0){
+        send(client_socket, buffer, sizeof(buffer), 0); 
+    }
 
-            // Reset only the bytes that have been sent
-            if (bytes_sent < valread) {
-                memmove(buffer, buffer + bytes_sent, valread - bytes_sent);
-            }
-            
-            valread -= bytes_sent;
-        }
-    }*/
+    //forward proxy response
+    //send(client_socket, buffer, sizeof(buffer), 0); 
 
     //close connection
-    close(prox_sock);
+    close(proxy_fd);
+    free(fix_request);
 }
 
 // Function to extract the filename from an input string and return it as a dynamically allocated string
@@ -527,7 +501,3 @@ bool need_proxy(char *filename){
         return false;
     }
 }
-
-
-//TO DO
-// proxy server
