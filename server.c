@@ -239,10 +239,10 @@ void proxy_remote_file(struct server_app *app, int client_socket, const char *re
     // TODO: Implement proxy request and replace the following code
     printf("To forward: %s\n",request);
 
-    int sock = 0;
+    int prox_sock = 0;
     struct sockaddr_in serv_addr;
     char buffer[1024] = {0};
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+    if ((prox_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         printf("\n Socket creation error \n");
         return;
     }
@@ -258,48 +258,58 @@ void proxy_remote_file(struct server_app *app, int client_socket, const char *re
         return;
     }
     
-    //where im failing
-    if (connect(client_socket, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
+    printf("WT forward \'%s\' to proxy\n",request);
+
+    // Connect to proxy server 
+    if (connect( prox_sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
         printf("\nConnection Failed \n");
         return;
     }
     printf("\tProxy connection success\n");
 
-    //forward the request
-    send(client_socket,request,strlen(request),0);
-    printf("Forwarded \'%s\' to proxy\n\n",request);
     
-    //read the response
+    //forward the request
+    int sent = send( prox_sock,request,strlen(request),0);
+    printf("\t%d bytes\n",sent);
+    printf("Forwarded \'%s\' to proxy\n",request);
+    
     int valread = 0;
-
-    while(1){
-        printf("while loop");
-        int bytes_read = read(sock,buffer+valread,sizeof(buffer)-valread);
-        if (bytes_read <= 0) {
+    int buffer_size = sizeof(buffer);
+    while(true){
+        printf("?");
+        int bytes_read = read(prox_sock, buffer + valread, buffer_size - valread);
+        if (bytes_read < 0) {
             if (bytes_read < 0) {
                 perror("Read error");
             }
-            break; // Exit the loop if no more data to read
+            else if (bytes_read == 0) {
+                break;
+            }
         }
     
         valread += bytes_read;
 
         //send full buffer
-        if (valread >= sizeof(buffer)) {
+        if (valread >= sizeof(buffer) || bytes_read == 0) {
+            int bytes_sent = send(client_socket, buffer, valread, 0);
+            if(bytes_sent<0){
+                perror("Send to client error");
+                break;
+            }
             // Send the data
-            send(sock, buffer, valread, 0);
             printf("Sent %d bytes to the client\n", valread);
 
-            // Reset the buffer and valread
-            memset(buffer, 0, sizeof(buffer));
-            valread = 0;
+            // Reset only the bytes that have been sent
+            if (bytes_sent < valread) {
+                memmove(buffer, buffer + bytes_sent, valread - bytes_sent);
+            }
+            
+            valread -= bytes_sent;
         }
     }
 
-    //forward to client
-    send(client_socket, buffer, 1024, 0);
-
-    //send(client_socket, response, strlen(response), 0);
+    //close connection
+    close(prox_sock);
 }
 
 // Function to extract the filename from an input string and return it as a dynamically allocated string
@@ -529,7 +539,4 @@ bool need_proxy(char *filename){
 
 
 //TO DO
-
-// % and %20 in the filename -swetha
-
-// proxy server -abril
+// proxy server
