@@ -260,7 +260,7 @@ void proxy_remote_file(struct server_app *app, int client_socket, const char *re
     }
     printf("Connection success\n");
 
-    if( ( send( proxy_fd, fix_request, strlen(test_req), 0 ) ) < 0){
+    if( ( send( proxy_fd, fix_request, strlen(fix_request), 0 ) ) < 0){
         printf("Send Failed \n");
         exit(EXIT_FAILURE);
     }
@@ -269,12 +269,11 @@ void proxy_remote_file(struct server_app *app, int client_socket, const char *re
     char buffer[BUFFER_SIZE];//set size buffer
     size_t bytes_read;
 
-    while( recv(proxy_fd, buffer, sizeof(buffer) /*- 1*/ , 0) > 0){
-        send(client_socket, buffer, sizeof(buffer), 0); 
+    //read and forward
+    while( ( bytes_read = recv(proxy_fd, buffer, sizeof(buffer), 0) ) > 0){
+        printf("%zu",bytes_read);
+        send(client_socket, buffer, bytes_read, 0); 
     }
-
-    //forward proxy response
-    //send(client_socket, buffer, sizeof(buffer), 0); 
 
     //close connection
     close(proxy_fd);
