@@ -267,7 +267,6 @@ void proxy_remote_file(struct server_app *app, int client_socket, const char *re
     }
     printf("\tProxy connection success\n");
 
-    
     //forward the request
     int sent = send( prox_sock,request,strlen(request),0);
     printf("\t%d bytes\n",sent);
@@ -275,9 +274,17 @@ void proxy_remote_file(struct server_app *app, int client_socket, const char *re
     
     int valread = 0;
     int buffer_size = sizeof(buffer);
+    
+    int bytes_read = read(prox_sock, buffer, buffer_size);
+    printf("read()\n");
+
+    send(client_socket, buffer, bytes_read, 0);
+    printf("send()\n");
+    
+    /*
     while(true){
         printf("?");
-        int bytes_read = read(prox_sock, buffer + valread, buffer_size - valread);
+        int bytes_read = recv(prox_sock, buffer + valread, buffer_size - valread,0);
         if (bytes_read < 0) {
             if (bytes_read < 0) {
                 perror("Read error");
@@ -306,7 +313,7 @@ void proxy_remote_file(struct server_app *app, int client_socket, const char *re
             
             valread -= bytes_sent;
         }
-    }
+    }*/
 
     //close connection
     close(prox_sock);
