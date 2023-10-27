@@ -44,7 +44,7 @@ void proxy_remote_file(struct server_app *app, int client_socket, const char *pa
 char *getfilename(char* GETLine);
 char *getContentType(char *filename);
 char *getDate();
-void numOf1MBsections(const char* filename, size_t* sectionCount, size_t* remainingSize);
+void fileSize(const char* filename, size_t* fileSize);
 char *chunkHeader(const char *fn, size_t dataLength, char *general_header, size_t * send_len);
 char *readInData(size_t data_len, char *chunk_header);
 bool need_proxy(char *filename);
@@ -209,30 +209,18 @@ void serve_local_file(int client_socket, const char *path, char *general_header)
     const char* filename = path;
 
     //Size of file
-    size_t sectionCount;//num of 1 MB sections
-    size_t remainingSize;//remaining bytes
-    numOf1MBsections(filename, &sectionCount, &remainingSize);//get num of 1 MB sections plus extra
-    size_t send_len[1] = {-1};
+    size_t file_size;//file size
+    fileSize(filename, &file_size);//get fs
+    size_t send_len[1] = {-1};//amt of bytes were sending
 
-    //Send chunks (first the 1 MB sections)
-    for (size_t i = 0; i < sectionCount; i++) {
-        char *chunk_header = chunkHeader( filename, MB, general_header, send_len);//build chunk header based off content length
-        send(client_socket, chunk_header, send_len[0], 0);//change to add data later
-
-        printf("\033[36mSent chunk #%zu\n",i);
-        printf("\033[0m%s",chunk_header);
-
-        free(chunk_header);
-    }
-    //Send trailing bytes (non-multiple of a MB)
-    char *chunk_header = chunkHeader( filename,remainingSize, general_header, send_len);//build chunk header based off content length
+    //Send response
+    char *chunk_header = chunkHeader( filename,file_size, general_header, send_len);//build chunk header based off content length
     send(client_socket, chunk_header, send_len[0], 0);//change to add data later
     
-    printf("\033[31mChunk Header:\n%s",chunk_header);
-    printf("\033[36mSent chunk #%zu\n",sectionCount+1);
+    printf("\033[31mResponse:\n%s",chunk_header);
+    printf("\033[36mSent Response\n");
     
     free(chunk_header);
-    printf("\033[0mResponses Sent!\n");
 }
 
 void proxy_remote_file(struct server_app *app, int client_socket, const char *request) {
@@ -435,7 +423,7 @@ char *getDate() {
     return formattedDateTime;
 }
 
-void numOf1MBsections(const char* filename, size_t* sectionCount, size_t* remainingSize) {
+void fileSize(const char* filename, size_t* fileSize) {
     FILE* file = fopen(filename, "rb");
     if (!file) {
         perror("Failed to open file: File doesnt exist");
@@ -444,14 +432,10 @@ void numOf1MBsections(const char* filename, size_t* sectionCount, size_t* remain
 
     // Get the file size
     fseek(file, 0, SEEK_END);
-    long long file_size = ftell(file);
+    long long fs = ftell(file);
     rewind(file);
 
-    // Calculate the number of 1 MB sections
-    *sectionCount = file_size / MB;
-
-    // Calculate the size of the remaining data
-    *remainingSize = file_size % MB;
+    *fileSize = fs;
 
     fclose(file);
 }
