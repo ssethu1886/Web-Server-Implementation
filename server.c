@@ -8,14 +8,7 @@
 #include <getopt.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
-
 #include <time.h>
-#define MB 1048576 // 1 MB 
-
-/**
- * Project 1 starter code
- * All parts needed to be changed/added are marked with TODO
- */
 
 #define BUFFER_SIZE 1024
 #define DEFAULT_SERVER_PORT 8081
@@ -41,15 +34,14 @@ void serve_local_file(int client_socket, const char *path,char *general_header);
 void proxy_remote_file(struct server_app *app, int client_socket, const char *path);
 
 // Helper functions
-char *getfilename(char* GETLine);
-char *getContentType(char *filename);
-char *getDate();
-void fileSize(const char* filename, size_t* fileSize);
-char *chunkHeader(const char *fn, size_t dataLength, char *general_header, size_t * send_len);
-char *readInData(size_t data_len, char *chunk_header);
-bool need_proxy(char *filename);
+char *getfilename(char* GETLine);//extract filename from client request
+char *getContentType(char *filename);//get the file type
+char *getDate();//get the current data
+void fileSize(const char* filename, size_t* fileSize);//get the size of the requested file
+char *createResponse(const char *fn, size_t dataLength, char *general_header, size_t * send_len);//build the http response message
+char *readInData(size_t data_len, char *chunk_header);//read the local file data
+bool need_proxy(char *filename);//check if connection to proxy server is needed
 
-// The main function is provided and no change is needed
 int main(int argc, char *argv[])
 {
     struct server_app app;
@@ -153,7 +145,8 @@ void handle_request(struct server_app *app, int client_socket) {
     char *request = malloc(strlen(buffer) + 1);
     strcpy(request, buffer);
 
-    //Build the response 
+    //Build the response message
+    // here, just the simpler components (general_header)
 
     //Status
     char *status = "HTTP/1.1 200 OK\r\n";
@@ -182,11 +175,11 @@ void handle_request(struct server_app *app, int client_socket) {
     printf("\033[36mGeneral Header:\n%s\n",general_header);
     printf("\033[0m");
 
-    bool needProxy = need_proxy(filename);// it file extention is ".ts"
+    bool needProxy = need_proxy(filename);// if file extention is ".ts"
     if (needProxy) {
-        proxy_remote_file(app, client_socket, request);//request -> filename ?
+        proxy_remote_file(app, client_socket, request);//forward request
     } else {
-        serve_local_file(client_socket, filename,general_header);
+        serve_local_file(client_socket, filename,general_header);//send a local file
     }
     free(filename);
     free(date_curr);
@@ -195,26 +188,15 @@ void handle_request(struct server_app *app, int client_socket) {
 }
 
 void serve_local_file(int client_socket, const char *path, char *general_header) {
-    // TODO: Properly implement serving of local files
-    // The following code returns a dummy response for all requests
-    // but it should give you a rough idea about what a proper response looks like
-    // What you need to do 
-    // (when the requested file exists):
-    // * Open the requested file
-    // * Build proper response headers (see details in the spec), and send them
-    // * Also send file content
-    // (When the requested file does not exist):
-    // * Generate a correct response
-
     const char* filename = path;
 
     //Size of file
     size_t file_size;//file size
     fileSize(filename, &file_size);//get fs
-    size_t send_len[1] = {-1};//amt of bytes were sending
+    size_t send_len[1] = {-1};//amt of bytes we're sending
 
     //Send response
-    char *chunk_header = chunkHeader( filename,file_size, general_header, send_len);//build chunk header based off content length
+    char *chunk_header = createResponse( filename,file_size, general_header, send_len);//build chunk header based off content length
     send(client_socket, chunk_header, send_len[0], 0);//change to add data later
     
     printf("\033[31mResponse:\n%s",chunk_header);
@@ -226,14 +208,14 @@ void serve_local_file(int client_socket, const char *path, char *general_header)
 void proxy_remote_file(struct server_app *app, int client_socket, const char *request) {
     printf("To forward: %s\n",request);
 
-    //TODO append \r\n\r\n to request msg
+    // Append crlfcrlf to orginal response message
     char * fix_request = (char *) malloc(strlen(request)+4);
     if (fix_request){
        strcpy(fix_request, request); 
        strcat(fix_request, "\r\n\r\n");
     }
-    char * test_req = "GET /output0.ts HTTP/1.1\r\n\r\n";
 
+    // Create socket for the proxy server
     int proxy_fd;
     struct sockaddr_in proxy_addr;
     if ((proxy_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {//create TCP socket
@@ -260,6 +242,7 @@ void proxy_remote_file(struct server_app *app, int client_socket, const char *re
     }
     printf("Connection success\n");
 
+    // Forward the request to the server
     if( ( send( proxy_fd, fix_request, strlen(fix_request), 0 ) ) < 0){
         printf("Send Failed \n");
         exit(EXIT_FAILURE);
@@ -269,7 +252,7 @@ void proxy_remote_file(struct server_app *app, int client_socket, const char *re
     char buffer[BUFFER_SIZE];//set size buffer
     size_t bytes_read;
 
-    //read and forward
+    // Read from the socket and send what was read to the client socket
     while( ( bytes_read = recv(proxy_fd, buffer, sizeof(buffer), 0) ) > 0){
         printf("%zu",bytes_read);
         send(client_socket, buffer, bytes_read, 0); 
@@ -413,10 +396,11 @@ void fileSize(const char* filename, size_t* fileSize) {
     fclose(file);
 }
 
-char *chunkHeader(const char *fn, size_t dataLength, char *general_header, size_t * send_len) {
+char *createResponse(const char *fn, size_t dataLength, char *general_header, size_t * send_len) {
+    // String stuff so i can get lenght of dataLength as a string
     int intSize = snprintf(NULL, 0, "%zu", dataLength);
     char content_length[64]; // Buffer for "Content-Length" line
-    snprintf(content_length, sizeof(content_length), "Content-Length: %zu", dataLength);
+    snprintf(content_length, sizeof(content_length), "Content-Length: %zu", dataLength);//the content length line
 
     // Calculate the total length, including the null terminator
     size_t general_header_length = strlen(general_header);

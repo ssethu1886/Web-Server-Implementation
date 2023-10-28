@@ -1,7 +1,5 @@
 # README
 
-**IMPORTANT**: Before proceeding, ensure you thoroughly read and understand the project specification. The README is just a supplementary guide, while the project specification is the primary source of project requirements and details. Any discrepancies or uncertainties should be addressed based on the content in the project specification.
-
 ## Project Description
 
 This project is a basic HTTP server, designed to handle requests by either serving local files or proxying remote files. The starter code provides a foundation upon which you can build the necessary logic to serve requests based on their content and the presence of files locally.
@@ -38,20 +36,3 @@ After compiling, you can run the server using the following command:
 - `-b local_port`: Specify the local port on which the HTTP server will run. Defaults to `8081`.
 - `-r remote_host`: Specify the remote host's address for proxying. Defaults to `131.179.176.34`.
 - `-p remote_port`: Specify the remote port for proxying. Defaults to `5001`.
-
-## Project Tasks
-
-To complete this project, consider addressing the following TODOs:
-
-1. **Request Parsing**: Parse the header of the incoming HTTP request to extract essential fields like the requested file name.
-2. **Local File Serving**: Implement the logic for serving files that exist locally.
-3. **Proxying Remote Files**: If a file does not exist locally, or based on any other criterion you define, you might want to proxy the request to another server.
-4. **Handling Errors (Extra Credits)**: Implement proper error responses.
-
-## Notes
-
-The starter code assumes that the HTTP request header is small enough to be read once as a whole, which may not be ideal in a real-world scenario but suffices for this project's scope.
-
-Remember to check for memory leaks and handle them appropriately, particularly when dealing with dynamically allocated memory.
-
-Good luck with your project!
